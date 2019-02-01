@@ -13,10 +13,11 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	. "github.com/franela/goblin"
+	"github.com/franela/goblin"
 	. "github.com/onsi/gomega"
 )
 
@@ -37,7 +38,7 @@ func TestRequest(t *testing.T) {
 	valuesQuery.Add("friend", "jonas")
 	valuesQuery.Add("friend", "peter")
 
-	g := Goblin(t)
+	g := goblin.Goblin(t)
 
 	RegisterFailHandler(func(m string, _ ...int) { g.Fail(m) })
 
@@ -1147,7 +1148,7 @@ func Test_paramParse(t *testing.T) {
 		Corge       string `url:"corge"`
 	}
 
-	g := Goblin(t)
+	g := goblin.Goblin(t)
 	RegisterFailHandler(func(m string, _ ...int) { g.Fail(m) })
 	var form = Form{}
 	var aform = AnnotedForm{}
@@ -1213,4 +1214,77 @@ func Test_paramParse(t *testing.T) {
 		})
 	})
 
+}
+
+func TestConcurrencyRequest(t *testing.T) {
+	g := goblin.Goblin(t)
+	RegisterFailHandler(func(m string, _ ...int) { g.Fail(m) })
+
+	g.Describe("Concurrency Request", func() {
+		var ts *httptest.Server
+		var lastReq *http.Request
+		// var requestHeaders http.Header
+
+		g.Before(func() {
+			ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// requestHeaders = r.Header
+				if r.Method == "GET" && r.URL.Path == "/foo" {
+					w.WriteHeader(200)
+					fmt.Fprint(w, "bar")
+
+				} else if r.Method == "GET" && r.URL.Path == "/" {
+					lastReq = r
+					w.Header().Add("x-forwarded-for", "test")
+					w.Header().Add("Set-Cookie", "foo=bar")
+					w.WriteHeader(200)
+					w.Write([]byte(""))
+				}
+			}))
+		})
+
+		g.After(func() {
+			ts.Close()
+		})
+
+		g.It("Should do 10 requests", func() {
+			var wg sync.WaitGroup
+
+			for i := 0; i < 10; i++ {
+				wg.Add(1)
+
+				go func() {
+					defer wg.Done()
+					res, err := Request{Uri: ts.URL + "/foo"}.Do()
+
+					Expect(err).Should(BeNil())
+
+					str, _ := res.Body.ToString()
+					Expect(str).Should(Equal("bar"))
+					Expect(res.StatusCode).Should(Equal(200))
+				}()
+			}
+			wg.Wait()
+		})
+
+		g.It("Should do 10 requests with proxy", func() {
+			var wg sync.WaitGroup
+
+			for i := 0; i < 10; i++ {
+				wg.Add(1)
+
+				go func() {
+					defer wg.Done()
+
+					proxiedHost := "www.google.com"
+					res, err := Request{Uri: "http://" + proxiedHost, Proxy: ts.URL}.Do()
+					Expect(err).Should(BeNil())
+					Expect(res.Header.Get("x-forwarded-for")).Should(Equal("test"))
+					Expect(lastReq).ShouldNot(BeNil())
+					Expect(lastReq.Host).Should(Equal(proxiedHost))
+				}()
+			}
+			wg.Wait()
+		})
+
+	})
 }
