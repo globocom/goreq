@@ -5,48 +5,38 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
-	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"reflect"
 	"strings"
-	"time"
 )
 
 type itimeout interface {
 	Timeout() bool
 }
+
+//Request represents an HTTP request to be sent by a client.
 type Request struct {
-	headers             []headerTuple
-	cookies             []*http.Cookie
-	Method              string
-	Uri                 string
-	Body                interface{}
-	QueryString         interface{}
-	Timeout             time.Duration
-	ContentType         string
-	Accept              string
-	Host                string
-	UserAgent           string
-	Insecure            bool
-	MaxRedirects        int
-	RedirectHeaders     bool
-	Proxy               string
-	proxyConnectHeaders []headerTuple
-	Compression         *compression
-	BasicAuthUsername   string
-	BasicAuthPassword   string
-	CookieJar           http.CookieJar
-	ShowDebug           bool
-	OnBeforeRequest     func(goreq *Request, httpreq *http.Request)
+	headers           []headerTuple
+	cookies           []*http.Cookie
+	Method            string
+	Uri               string
+	Body              interface{}
+	QueryString       interface{}
+	ContentType       string
+	Accept            string
+	Host              string
+	UserAgent         string
+	Compression       *compression
+	BasicAuthUsername string
+	BasicAuthPassword string
+	ShowDebug         bool
+	OnBeforeRequest   func(goreq *Request, httpreq *http.Request)
 }
 
 type compression struct {
@@ -55,22 +45,12 @@ type compression struct {
 	ContentEncoding string
 }
 
+//Response represents the response from an HTTP request.
 type Response struct {
 	*http.Response
 	Uri  string
 	Body *Body
 	req  *http.Request
-}
-
-func (r Response) CancelRequest() {
-	cancelRequest(DefaultTransport, r.req)
-
-}
-
-func cancelRequest(transport interface{}, r *http.Request) {
-	if tp, ok := transport.(transportRequestCanceler); ok {
-		tp.CancelRequest(r)
-	}
 }
 
 type headerTuple struct {
@@ -86,10 +66,6 @@ type Body struct {
 type Error struct {
 	timeout bool
 	Err     error
-}
-
-type transportRequestCanceler interface {
-	CancelRequest(*http.Request)
 }
 
 func (e *Error) Timeout() bool {
@@ -241,194 +217,17 @@ func prepareRequestBody(b interface{}) (io.Reader, error) {
 	}
 }
 
-var DefaultDialer = &net.Dialer{Timeout: 1000 * time.Millisecond}
-var DefaultTransport http.RoundTripper = &http.Transport{Dial: DefaultDialer.Dial, Proxy: http.ProxyFromEnvironment}
-var DefaultClient = &http.Client{Transport: DefaultTransport}
-
-var proxyTransport http.RoundTripper
-var proxyClient *http.Client
-
-func SetConnectTimeout(duration time.Duration) {
-	DefaultDialer.Timeout = duration
+//AddHeader add header in request.
+func (request *Request) AddHeader(name string, value string) {
+	if request.headers == nil {
+		request.headers = []headerTuple{}
+	}
+	request.headers = append(request.headers, headerTuple{name: name, value: value})
 }
 
-func (r *Request) AddHeader(name string, value string) {
-	if r.headers == nil {
-		r.headers = []headerTuple{}
-	}
-	r.headers = append(r.headers, headerTuple{name: name, value: value})
-}
-
-func (r Request) WithHeader(name string, value string) Request {
-	r.AddHeader(name, value)
-	return r
-}
-
-func (r *Request) AddCookie(c *http.Cookie) {
-	r.cookies = append(r.cookies, c)
-}
-
-func (r Request) WithCookie(c *http.Cookie) Request {
-	r.AddCookie(c)
-	return r
-}
-
-func (r *Request) AddProxyConnectHeader(name string, value string) {
-	if r.proxyConnectHeaders == nil {
-		r.proxyConnectHeaders = []headerTuple{}
-	}
-	r.proxyConnectHeaders = append(r.proxyConnectHeaders, headerTuple{name: name, value: value})
-}
-
-func (r Request) WithProxyConnectHeader(name string, value string) Request {
-	r.AddProxyConnectHeader(name, value)
-	return r
-}
-
-func (r Request) Do() (*Response, error) {
-	var client = DefaultClient
-	var transport = DefaultTransport
-	var resUri string
-	var redirectFailed bool
-
-	r.Method = valueOrDefault(r.Method, "GET")
-
-	// use a client with a cookie jar if necessary. We create a new client not
-	// to modify the default one.
-	if r.CookieJar != nil {
-		client = &http.Client{
-			Transport: transport,
-			Jar:       r.CookieJar,
-		}
-	}
-
-	if r.Proxy != "" {
-		proxyUrl, err := url.Parse(r.Proxy)
-		if err != nil {
-			// proxy address is in a wrong format
-			return nil, &Error{Err: err}
-		}
-
-		proxyHeader := make(http.Header)
-		if r.proxyConnectHeaders != nil {
-			for _, header := range r.proxyConnectHeaders {
-				proxyHeader.Add(header.name, header.value)
-			}
-		}
-
-		//If jar is specified new client needs to be built
-		if proxyTransport == nil || client.Jar != nil {
-			proxyTransport = &http.Transport{
-				Dial:               DefaultDialer.Dial,
-				Proxy:              http.ProxyURL(proxyUrl),
-				ProxyConnectHeader: proxyHeader,
-			}
-			proxyClient = &http.Client{Transport: proxyTransport, Jar: client.Jar}
-		} else if proxyTransport, ok := proxyTransport.(*http.Transport); ok {
-			proxyTransport.Proxy = http.ProxyURL(proxyUrl)
-			proxyTransport.ProxyConnectHeader = proxyHeader
-		}
-		transport = proxyTransport
-		client = proxyClient
-	}
-
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-
-		if len(via) > r.MaxRedirects {
-			redirectFailed = true
-			return errors.New("Error redirecting. MaxRedirects reached")
-		}
-
-		resUri = req.URL.String()
-
-		//By default Golang will not redirect request headers
-		// https://code.google.com/p/go/issues/detail?id=4800&q=request%20header
-		if r.RedirectHeaders {
-			for key, val := range via[0].Header {
-				req.Header[key] = val
-			}
-		}
-		return nil
-	}
-
-	if transport, ok := transport.(*http.Transport); ok {
-		if r.Insecure {
-			if transport.TLSClientConfig != nil {
-				transport.TLSClientConfig.InsecureSkipVerify = true
-			} else {
-				transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-			}
-		} else if transport.TLSClientConfig != nil {
-			// the default TLS client (when transport.TLSClientConfig==nil) is
-			// already set to verify, so do nothing in that case
-			transport.TLSClientConfig.InsecureSkipVerify = false
-		}
-	}
-
-	req, err := r.NewRequest()
-
-	if err != nil {
-		// we couldn't parse the URL.
-		return nil, &Error{Err: err}
-	}
-
-	timeout := false
-	if r.Timeout > 0 {
-		client.Timeout = r.Timeout
-	}
-
-	if r.ShowDebug {
-		dump, err := httputil.DumpRequest(req, true)
-		if err != nil {
-			log.Println(err)
-		}
-		log.Println(string(dump))
-	}
-
-	if r.OnBeforeRequest != nil {
-		r.OnBeforeRequest(&r, req)
-	}
-	res, err := client.Do(req)
-
-	if err != nil {
-		if !timeout {
-			if t, ok := err.(itimeout); ok {
-				timeout = t.Timeout()
-			}
-			if ue, ok := err.(*url.Error); ok {
-				if t, ok := ue.Err.(itimeout); ok {
-					timeout = t.Timeout()
-				}
-			}
-		}
-
-		var response *Response
-		//If redirect fails we still want to return response data
-		if redirectFailed {
-			if res != nil {
-				response = &Response{res, resUri, &Body{reader: res.Body}, req}
-			} else {
-				response = &Response{res, resUri, nil, req}
-			}
-		}
-
-		//If redirect fails and we haven't set a redirect count we shouldn't return an error
-		if redirectFailed && r.MaxRedirects == 0 {
-			return response, nil
-		}
-
-		return response, &Error{timeout: timeout, Err: err}
-	}
-
-	if r.Compression != nil && strings.Contains(res.Header.Get("Content-Encoding"), r.Compression.ContentEncoding) {
-		compressedReader, err := r.Compression.reader(res.Body)
-		if err != nil {
-			return nil, &Error{Err: err}
-		}
-		return &Response{res, resUri, &Body{reader: res.Body, compressedReader: compressedReader}, req}, nil
-	}
-
-	return &Response{res, resUri, &Body{reader: res.Body}, req}, nil
+//AddCookie add cookie in request.
+func (request *Request) AddCookie(cookie *http.Cookie) {
+	request.cookies = append(request.cookies, cookie)
 }
 
 func (r Request) addHeaders(headersMap http.Header) {
@@ -443,8 +242,10 @@ func (r Request) addHeaders(headersMap http.Header) {
 	}
 }
 
+//NewRequest returns a new Request given a method, URL, and optional body.
 func (r Request) NewRequest() (*http.Request, error) {
 
+	r.valueOrDefault()
 	b, e := prepareRequestBody(r.Body)
 	if e != nil {
 		// there was a problem marshaling the body
@@ -507,9 +308,8 @@ func (r Request) NewRequest() (*http.Request, error) {
 }
 
 // Return value if nonempty, def otherwise.
-func valueOrDefault(value, def string) string {
-	if value != "" {
-		return value
+func (request Request) valueOrDefault() {
+	if request.Method == "" {
+		request.Method = "GET"
 	}
-	return def
 }

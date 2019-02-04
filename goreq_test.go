@@ -3,6 +3,7 @@ package goreq
 import (
 	"compress/gzip"
 	"compress/zlib"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -14,7 +15,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -79,21 +79,6 @@ func TestRequest(t *testing.T) {
 					}
 					if r.Method == "DELETE" && r.URL.Path == "/foo/123" {
 						w.WriteHeader(204)
-					}
-					if r.Method == "GET" && r.URL.Path == "/redirect_test/301" {
-						http.Redirect(w, r, "/redirect_test/302", 301)
-					}
-					if r.Method == "GET" && r.URL.Path == "/redirect_test/302" {
-						http.Redirect(w, r, "/redirect_test/303", 302)
-					}
-					if r.Method == "GET" && r.URL.Path == "/redirect_test/303" {
-						http.Redirect(w, r, "/redirect_test/307", 303)
-					}
-					if r.Method == "GET" && r.URL.Path == "/redirect_test/307" {
-						http.Redirect(w, r, "/getquery", 307)
-					}
-					if r.Method == "GET" && r.URL.Path == "/redirect_test/destination" {
-						http.Redirect(w, r, ts.URL+"/destination", 301)
 					}
 					if r.Method == "GET" && r.URL.Path == "/getcookies" {
 						defer r.Body.Close()
@@ -189,9 +174,10 @@ func TestRequest(t *testing.T) {
 			})
 
 			g.Describe("GET", func() {
-
 				g.It("Should do a GET", func() {
-					res, err := Request{Uri: ts.URL + "/foo"}.Do()
+					client := NewClient(Options{})
+					request := Request{Uri: ts.URL + "/foo"}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -200,7 +186,9 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should return ContentLength", func() {
-					res, err := Request{Uri: ts.URL + "/foo"}.Do()
+					client := NewClient(Options{})
+					request := Request{Uri: ts.URL + "/foo"}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -210,10 +198,13 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should do a GET with querystring", func() {
-					res, err := Request{
+					client := NewClient(Options{})
+					request := Request{
 						Uri:         ts.URL + "/getquery",
 						QueryString: query,
-					}.Do()
+					}
+
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -222,10 +213,12 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should support url.Values in querystring", func() {
-					res, err := Request{
+					client := NewClient(Options{})
+					request := Request{
 						Uri:         ts.URL + "/getquery",
 						QueryString: valuesQuery,
-					}.Do()
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -234,7 +227,12 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should support sending string body", func() {
-					res, err := Request{Uri: ts.URL + "/getbody", Body: "foo"}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:  ts.URL + "/getbody",
+						Body: "foo",
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -243,7 +241,12 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Shoulds support sending a Reader body", func() {
-					res, err := Request{Uri: ts.URL + "/getbody", Body: strings.NewReader("foo")}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:  ts.URL + "/getbody",
+						Body: strings.NewReader("foo"),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -252,8 +255,14 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Support sending any object that is json encodable", func() {
+					client := NewClient(Options{})
+
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Uri: ts.URL + "/getbody", Body: obj}.Do()
+					request := Request{
+						Uri:  ts.URL + "/getbody",
+						Body: obj,
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -262,8 +271,14 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Support sending an array of bytes body", func() {
-					bdy := []byte{'f', 'o', 'o'}
-					res, err := Request{Uri: ts.URL + "/getbody", Body: bdy}.Do()
+					client := NewClient(Options{})
+
+					body := []byte{'f', 'o', 'o'}
+					request := Request{
+						Uri:  ts.URL + "/getbody",
+						Body: body,
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -272,15 +287,27 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should return an error when body is not JSON encodable", func() {
-					res, err := Request{Uri: ts.URL + "/getbody", Body: math.NaN()}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:  ts.URL + "/getbody",
+						Body: math.NaN(),
+					}
+					res, err := client.Do(request)
 
 					Expect(res).Should(BeNil())
 					Expect(err).ShouldNot(BeNil())
 				})
 
 				g.It("Should return a gzip reader if Content-Encoding is 'gzip'", func() {
-					res, err := Request{Uri: ts.URL + "/compressed", Compression: Gzip()}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:         ts.URL + "/compressed",
+						Compression: Gzip(),
+					}
+					res, err := client.Do(request)
+
 					b, _ := ioutil.ReadAll(res.Body)
+
 					Expect(err).Should(BeNil())
 					Expect(res.Body.compressedReader).ShouldNot(BeNil())
 					Expect(res.Body.reader).ShouldNot(BeNil())
@@ -290,7 +317,13 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should close reader and compresserReader on Body close", func() {
-					res, err := Request{Uri: ts.URL + "/compressed", Compression: Gzip()}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:         ts.URL + "/compressed",
+						Compression: Gzip(),
+					}
+					res, err := client.Do(request)
+
 					Expect(err).Should(BeNil())
 
 					_, e := ioutil.ReadAll(res.Body.reader)
@@ -313,36 +346,71 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should not return a gzip reader if Content-Encoding is not 'gzip'", func() {
-					res, err := Request{Uri: ts.URL + "/compressed_and_return_compressed_without_header", Compression: Gzip()}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:         ts.URL + "/compressed_and_return_compressed_without_header",
+						Compression: Gzip(),
+					}
+					res, err := client.Do(request)
+
 					b, _ := ioutil.ReadAll(res.Body)
+
 					Expect(err).Should(BeNil())
 					Expect(string(b)).ShouldNot(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
 				})
 
 				g.It("Should return a deflate reader if Content-Encoding is 'deflate'", func() {
-					res, err := Request{Uri: ts.URL + "/compressed_deflate", Compression: Deflate()}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:         ts.URL + "/compressed_deflate",
+						Compression: Deflate(),
+					}
+					res, err := client.Do(request)
+
 					b, _ := ioutil.ReadAll(res.Body)
+
 					Expect(err).Should(BeNil())
 					Expect(string(b)).Should(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
 				})
 
 				g.It("Should not return a delfate reader if Content-Encoding is not 'deflate'", func() {
-					res, err := Request{Uri: ts.URL + "/compressed_deflate_and_return_compressed_without_header", Compression: Deflate()}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:         ts.URL + "/compressed_deflate_and_return_compressed_without_header",
+						Compression: Deflate(),
+					}
+					res, err := client.Do(request)
+
 					b, _ := ioutil.ReadAll(res.Body)
+
 					Expect(err).Should(BeNil())
 					Expect(string(b)).ShouldNot(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
 				})
 
 				g.It("Should return a deflate reader when using zlib if Content-Encoding is 'deflate'", func() {
-					res, err := Request{Uri: ts.URL + "/compressed_deflate", Compression: Zlib()}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:         ts.URL + "/compressed_deflate",
+						Compression: Zlib(),
+					}
+					res, err := client.Do(request)
+
 					b, _ := ioutil.ReadAll(res.Body)
+
 					Expect(err).Should(BeNil())
 					Expect(string(b)).Should(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
 				})
 
 				g.It("Should not return a delfate reader when using zlib if Content-Encoding is not 'deflate'", func() {
-					res, err := Request{Uri: ts.URL + "/compressed_deflate_and_return_compressed_without_header", Compression: Zlib()}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Uri:         ts.URL + "/compressed_deflate_and_return_compressed_without_header",
+						Compression: Zlib(),
+					}
+					res, err := client.Do(request)
+
 					b, _ := ioutil.ReadAll(res.Body)
+
 					Expect(err).Should(BeNil())
 					Expect(string(b)).ShouldNot(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
 				})
@@ -362,10 +430,12 @@ func TestRequest(t *testing.T) {
 						},
 					})
 
-					res, err := Request{
-						Uri:       ts.URL + "/getcookies",
-						CookieJar: jar,
-					}.Do()
+					client := NewClient(Options{CookieJar: jar})
+
+					request := Request{
+						Uri: ts.URL + "/getcookies",
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -375,32 +445,20 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send cookies added with .AddCookie", func() {
+					client := NewClient(Options{})
+
 					c1 := &http.Cookie{Name: "c1", Value: "v1"}
 					c2 := &http.Cookie{Name: "c2", Value: "v2"}
 
-					req := Request{Uri: ts.URL + "/getcookies"}
-					req.AddCookie(c1)
-					req.AddCookie(c2)
+					request := Request{Uri: ts.URL + "/getcookies"}
+					request.AddCookie(c1)
+					request.AddCookie(c2)
 
-					res, err := req.Do()
+					res, err := client.Do(request)
+
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
 					Expect(str).Should(Equal("c1=v1; c2=v2"))
-					Expect(res.StatusCode).Should(Equal(200))
-					Expect(res.ContentLength).Should(Equal(int64(12)))
-				})
-
-				g.It("Should send cookies added with .WithCookie", func() {
-					c1 := &http.Cookie{Name: "c1", Value: "v2"}
-					c2 := &http.Cookie{Name: "c2", Value: "v3"}
-
-					res, err := Request{Uri: ts.URL + "/getcookies"}.
-						WithCookie(c1).
-						WithCookie(c2).
-						Do()
-					Expect(err).Should(BeNil())
-					str, _ := res.Body.ToString()
-					Expect(str).Should(Equal("c1=v2; c2=v3"))
 					Expect(res.StatusCode).Should(Equal(200))
 					Expect(res.ContentLength).Should(Equal(int64(12)))
 				})
@@ -412,10 +470,14 @@ func TestRequest(t *testing.T) {
 					jar, _ := cookiejar.New(nil)
 					Expect(err).Should(BeNil())
 
-					res, err := Request{
-						Uri:       ts.URL + "/setcookies",
+					client := NewClient(Options{
 						CookieJar: jar,
-					}.Do()
+					})
+
+					request := Request{
+						Uri: ts.URL + "/setcookies",
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 
@@ -434,7 +496,13 @@ func TestRequest(t *testing.T) {
 
 			g.Describe("POST", func() {
 				g.It("Should send a string", func() {
-					res, err := Request{Method: "POST", Uri: ts.URL, Body: "foo"}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Method: "POST",
+						Uri:    ts.URL,
+						Body:   "foo",
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -444,7 +512,13 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send a Reader", func() {
-					res, err := Request{Method: "POST", Uri: ts.URL, Body: strings.NewReader("foo")}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Method: "POST",
+						Uri:    ts.URL,
+						Body:   strings.NewReader("foo"),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -454,8 +528,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Send any object that is json encodable", func() {
+					client := NewClient(Options{})
+
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL, Body: obj}.Do()
+					request := Request{
+						Method: "POST",
+						Uri:    ts.URL,
+						Body:   obj,
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -465,8 +546,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Send an array of bytes", func() {
-					bdy := []byte{'f', 'o', 'o'}
-					res, err := Request{Method: "POST", Uri: ts.URL, Body: bdy}.Do()
+					client := NewClient(Options{})
+
+					body := []byte{'f', 'o', 'o'}
+					request := Request{
+						Method: "POST",
+						Uri:    ts.URL,
+						Body:   body,
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -476,20 +564,29 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should return an error when body is not JSON encodable", func() {
-					res, err := Request{Method: "POST", Uri: ts.URL, Body: math.NaN()}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Method: "POST",
+						Uri:    ts.URL,
+						Body:   math.NaN(),
+					}
+					res, err := client.Do(request)
 
 					Expect(res).Should(BeNil())
 					Expect(err).ShouldNot(BeNil())
 				})
 
 				g.It("Should do a POST with querystring", func() {
-					bdy := []byte{'f', 'o', 'o'}
-					res, err := Request{
+					client := NewClient(Options{})
+					body := []byte{'f', 'o', 'o'}
+					request := Request{
 						Method:      "POST",
 						Uri:         ts.URL + "/getquery",
-						Body:        bdy,
+						Body:        body,
 						QueryString: query,
-					}.Do()
+					}
+
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -498,8 +595,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send body as gzip if compressed", func() {
+					client := NewClient(Options{})
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL + "/compressed", Body: obj, Compression: Gzip()}.Do()
+					request := Request{
+						Method:      "POST",
+						Uri:         ts.URL + "/compressed",
+						Body:        obj,
+						Compression: Gzip(),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -508,8 +612,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send body as deflate if compressed", func() {
+					client := NewClient(Options{})
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL + "/compressed_deflate", Body: obj, Compression: Deflate()}.Do()
+					request := Request{
+						Method:      "POST",
+						Uri:         ts.URL + "/compressed_deflate",
+						Body:        obj,
+						Compression: Deflate(),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -518,8 +629,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send body as deflate using zlib if compressed", func() {
+					client := NewClient(Options{})
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL + "/compressed_deflate", Body: obj, Compression: Zlib()}.Do()
+					request := Request{
+						Method:      "POST",
+						Uri:         ts.URL + "/compressed_deflate",
+						Body:        obj,
+						Compression: Zlib(),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					str, _ := res.Body.ToString()
@@ -528,8 +646,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send body as gzip if compressed and parse return body", func() {
+					client := NewClient(Options{})
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL + "/compressed_and_return_compressed", Body: obj, Compression: Gzip()}.Do()
+					request := Request{
+						Method:      "POST",
+						Uri:         ts.URL + "/compressed_and_return_compressed",
+						Body:        obj,
+						Compression: Gzip(),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					b, _ := ioutil.ReadAll(res.Body)
@@ -538,8 +663,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send body as deflate if compressed and parse return body", func() {
+					client := NewClient(Options{})
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL + "/compressed_deflate_and_return_compressed", Body: obj, Compression: Deflate()}.Do()
+					request := Request{
+						Method:      "POST",
+						Uri:         ts.URL + "/compressed_deflate_and_return_compressed",
+						Body:        obj,
+						Compression: Deflate(),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					b, _ := ioutil.ReadAll(res.Body)
@@ -548,8 +680,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send body as deflate using zlib if compressed and parse return body", func() {
+					client := NewClient(Options{})
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL + "/compressed_deflate_and_return_compressed", Body: obj, Compression: Zlib()}.Do()
+					request := Request{
+						Method:      "POST",
+						Uri:         ts.URL + "/compressed_deflate_and_return_compressed",
+						Body:        obj,
+						Compression: Zlib(),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					b, _ := ioutil.ReadAll(res.Body)
@@ -558,8 +697,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send body as gzip if compressed and not parse return body if header not set ", func() {
+					client := NewClient(Options{})
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL + "/compressed_and_return_compressed_without_header", Body: obj, Compression: Gzip()}.Do()
+					request := Request{
+						Method:      "POST",
+						Uri:         ts.URL + "/compressed_and_return_compressed_without_header",
+						Body:        obj,
+						Compression: Gzip(),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					b, _ := ioutil.ReadAll(res.Body)
@@ -568,8 +714,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send body as deflate if compressed and not parse return body if header not set ", func() {
+					client := NewClient(Options{})
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL + "/compressed_deflate_and_return_compressed_without_header", Body: obj, Compression: Deflate()}.Do()
+					request := Request{
+						Method:      "POST",
+						Uri:         ts.URL + "/compressed_deflate_and_return_compressed_without_header",
+						Body:        obj,
+						Compression: Deflate(),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					b, _ := ioutil.ReadAll(res.Body)
@@ -578,8 +731,15 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should send body as deflate using zlib if compressed and not parse return body if header not set ", func() {
+					client := NewClient(Options{})
 					obj := map[string]string{"foo": "bar"}
-					res, err := Request{Method: "POST", Uri: ts.URL + "/compressed_deflate_and_return_compressed_without_header", Body: obj, Compression: Zlib()}.Do()
+					request := Request{
+						Method:      "POST",
+						Uri:         ts.URL + "/compressed_deflate_and_return_compressed_without_header",
+						Body:        obj,
+						Compression: Zlib(),
+					}
+					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
 					b, _ := ioutil.ReadAll(res.Body)
@@ -589,7 +749,13 @@ func TestRequest(t *testing.T) {
 			})
 
 			g.It("Should do a PUT", func() {
-				res, err := Request{Method: "PUT", Uri: ts.URL + "/foo/123", Body: "foo"}.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Method: "PUT",
+					Uri:    ts.URL + "/foo/123",
+					Body:   "foo",
+				}
+				res, err := client.Do(request)
 
 				Expect(err).Should(BeNil())
 				str, _ := res.Body.ToString()
@@ -598,14 +764,24 @@ func TestRequest(t *testing.T) {
 			})
 
 			g.It("Should do a DELETE", func() {
-				res, err := Request{Method: "DELETE", Uri: ts.URL + "/foo/123"}.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Method: "DELETE",
+					Uri:    ts.URL + "/foo/123",
+				}
+				res, err := client.Do(request)
 
 				Expect(err).Should(BeNil())
 				Expect(res.StatusCode).Should(Equal(204))
 			})
 
 			g.It("Should do a OPTIONS", func() {
-				res, err := Request{Method: "OPTIONS", Uri: ts.URL + "/foo"}.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Method: "OPTIONS",
+					Uri:    ts.URL + "/foo",
+				}
+				res, err := client.Do(request)
 
 				Expect(err).Should(BeNil())
 				str, _ := res.Body.ToString()
@@ -614,7 +790,12 @@ func TestRequest(t *testing.T) {
 			})
 
 			g.It("Should do a PATCH", func() {
-				res, err := Request{Method: "PATCH", Uri: ts.URL + "/foo"}.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Method: "PATCH",
+					Uri:    ts.URL + "/foo",
+				}
+				res, err := client.Do(request)
 
 				Expect(err).Should(BeNil())
 				str, _ := res.Body.ToString()
@@ -623,7 +804,12 @@ func TestRequest(t *testing.T) {
 			})
 
 			g.It("Should do a TRACE", func() {
-				res, err := Request{Method: "TRACE", Uri: ts.URL + "/foo"}.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Method: "TRACE",
+					Uri:    ts.URL + "/foo",
+				}
+				res, err := client.Do(request)
 
 				Expect(err).Should(BeNil())
 				str, _ := res.Body.ToString()
@@ -632,7 +818,12 @@ func TestRequest(t *testing.T) {
 			})
 
 			g.It("Should do a custom method", func() {
-				res, err := Request{Method: "FOOBAR", Uri: ts.URL + "/foo"}.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Method: "FOOBAR",
+					Uri:    ts.URL + "/foo",
+				}
+				res, err := client.Do(request)
 
 				Expect(err).Should(BeNil())
 				str, _ := res.Body.ToString()
@@ -642,21 +833,39 @@ func TestRequest(t *testing.T) {
 
 			g.Describe("Responses", func() {
 				g.It("Should handle strings", func() {
-					res, _ := Request{Method: "POST", Uri: ts.URL, Body: "foo bar"}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Method: "POST",
+						Uri:    ts.URL,
+						Body:   "foo bar",
+					}
+					res, _ := client.Do(request)
 
 					str, _ := res.Body.ToString()
 					Expect(str).Should(Equal("foo bar"))
 				})
 
 				g.It("Should handle io.ReaderCloser", func() {
-					res, _ := Request{Method: "POST", Uri: ts.URL, Body: "foo bar"}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Method: "POST",
+						Uri:    ts.URL,
+						Body:   "foo bar",
+					}
+					res, _ := client.Do(request)
 
 					body, _ := ioutil.ReadAll(res.Body)
 					Expect(string(body)).Should(Equal("foo bar"))
 				})
 
 				g.It("Should handle parsing JSON", func() {
-					res, _ := Request{Method: "POST", Uri: ts.URL, Body: `{"foo": "bar"}`}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Method: "POST",
+						Uri:    ts.URL,
+						Body:   `{"foo": "bar"}`,
+					}
+					res, _ := client.Do(request)
 
 					var foobar map[string]string
 
@@ -666,172 +875,18 @@ func TestRequest(t *testing.T) {
 				})
 
 				g.It("Should return the original request response", func() {
-					res, _ := Request{Method: "POST", Uri: ts.URL, Body: `{"foo": "bar"}`}.Do()
+					client := NewClient(Options{})
+					request := Request{
+						Method: "POST",
+						Uri:    ts.URL,
+						Body:   `{"foo": "bar"}`,
+					}
+					res, _ := client.Do(request)
 
 					Expect(res.Response).ShouldNot(BeNil())
 				})
 			})
-			g.Describe("Redirects", func() {
-				g.It("Should not follow by default", func() {
-					res, _ := Request{
-						Uri: ts.URL + "/redirect_test/301",
-					}.Do()
-					Expect(res.StatusCode).Should(Equal(301))
-				})
 
-				g.It("Should not follow if method is explicitly specified", func() {
-					res, err := Request{
-						Method: "GET",
-						Uri:    ts.URL + "/redirect_test/301",
-					}.Do()
-					Expect(res.StatusCode).Should(Equal(301))
-					Expect(err).ShouldNot(HaveOccurred())
-				})
-
-				g.It("Should throw an error if MaxRedirect limit is exceeded", func() {
-					res, err := Request{
-						Method:       "GET",
-						MaxRedirects: 1,
-						Uri:          ts.URL + "/redirect_test/301",
-					}.Do()
-					Expect(res.StatusCode).Should(Equal(302))
-					Expect(err).Should(HaveOccurred())
-				})
-
-				g.It("Should copy request headers headers when redirecting if specified", func() {
-					req := Request{
-						Method:          "GET",
-						Uri:             ts.URL + "/redirect_test/301",
-						MaxRedirects:    4,
-						RedirectHeaders: true,
-					}
-					req.AddHeader("Testheader", "TestValue")
-					res, _ := req.Do()
-					Expect(res.StatusCode).Should(Equal(200))
-					Expect(requestHeaders.Get("Testheader")).Should(Equal("TestValue"))
-				})
-
-				g.It("Should follow only specified number of MaxRedirects", func() {
-					res, _ := Request{
-						Uri:          ts.URL + "/redirect_test/301",
-						MaxRedirects: 1,
-					}.Do()
-					Expect(res.StatusCode).Should(Equal(302))
-					res, _ = Request{
-						Uri:          ts.URL + "/redirect_test/301",
-						MaxRedirects: 2,
-					}.Do()
-					Expect(res.StatusCode).Should(Equal(303))
-					res, _ = Request{
-						Uri:          ts.URL + "/redirect_test/301",
-						MaxRedirects: 3,
-					}.Do()
-					Expect(res.StatusCode).Should(Equal(307))
-					res, _ = Request{
-						Uri:          ts.URL + "/redirect_test/301",
-						MaxRedirects: 4,
-					}.Do()
-					Expect(res.StatusCode).Should(Equal(200))
-				})
-
-				g.It("Should return final URL of the response when redirecting", func() {
-					res, _ := Request{
-						Uri:          ts.URL + "/redirect_test/destination",
-						MaxRedirects: 2,
-					}.Do()
-					Expect(res.Uri).Should(Equal(ts.URL + "/destination"))
-				})
-			})
-		})
-
-		g.Describe("Timeouts", func() {
-
-			g.Describe("Connection timeouts", func() {
-				g.It("Should connect timeout after a default of 1000 ms", func() {
-					start := time.Now()
-					res, err := Request{Uri: "http://10.255.255.1"}.Do()
-					elapsed := time.Since(start)
-
-					Expect(elapsed).Should(BeNumerically("<", 1100*time.Millisecond))
-					Expect(elapsed).Should(BeNumerically(">=", 1000*time.Millisecond))
-					Expect(res).Should(BeNil())
-					Expect(err.(*Error).Timeout()).Should(BeTrue())
-				})
-				g.It("Should connect timeout after a custom amount of time", func() {
-					SetConnectTimeout(100 * time.Millisecond)
-					start := time.Now()
-					res, err := Request{Uri: "http://10.255.255.1"}.Do()
-					elapsed := time.Since(start)
-
-					Expect(elapsed).Should(BeNumerically("<", 150*time.Millisecond))
-					Expect(elapsed).Should(BeNumerically(">=", 100*time.Millisecond))
-					Expect(res).Should(BeNil())
-					Expect(err.(*Error).Timeout()).Should(BeTrue())
-				})
-				g.It("Should connect timeout after a custom amount of time even with method set", func() {
-					SetConnectTimeout(100 * time.Millisecond)
-					start := time.Now()
-					request := Request{
-						Uri:    "http://10.255.255.1",
-						Method: "GET",
-					}
-					res, err := request.Do()
-					elapsed := time.Since(start)
-
-					Expect(elapsed).Should(BeNumerically("<", 150*time.Millisecond))
-					Expect(elapsed).Should(BeNumerically(">=", 100*time.Millisecond))
-					Expect(res).Should(BeNil())
-					Expect(err.(*Error).Timeout()).Should(BeTrue())
-				})
-			})
-
-			g.Describe("Request timeout", func() {
-				var ts *httptest.Server
-				stop := make(chan bool)
-
-				g.Before(func() {
-					ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						<-stop
-						// just wait for someone to tell you when to end the request. this is used to simulate a slow server
-					}))
-				})
-				g.After(func() {
-					stop <- true
-					ts.Close()
-				})
-				g.It("Should request timeout after a custom amount of time", func() {
-					SetConnectTimeout(1000 * time.Millisecond)
-
-					start := time.Now()
-					res, err := Request{Uri: ts.URL, Timeout: 500 * time.Millisecond}.Do()
-					elapsed := time.Since(start)
-
-					Expect(elapsed).Should(BeNumerically("<", 550*time.Millisecond))
-					Expect(elapsed).Should(BeNumerically(">=", 500*time.Millisecond))
-					Expect(res).Should(BeNil())
-					Expect(err.(*Error).Timeout()).Should(BeTrue())
-				})
-				g.It("Should request timeout after a custom amount of time even with proxy", func() {
-					proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						time.Sleep(2000 * time.Millisecond)
-						w.WriteHeader(200)
-					}))
-					SetConnectTimeout(1000 * time.Millisecond)
-					start := time.Now()
-					request := Request{
-						Uri:     ts.URL,
-						Proxy:   proxy.URL,
-						Timeout: 500 * time.Millisecond,
-					}
-					res, err := request.Do()
-					elapsed := time.Since(start)
-
-					Expect(elapsed).Should(BeNumerically("<", 550*time.Millisecond))
-					Expect(elapsed).Should(BeNumerically(">=", 500*time.Millisecond))
-					Expect(res).Should(BeNil())
-					Expect(err.(*Error).Timeout()).Should(BeTrue())
-				})
-			})
 		})
 
 		g.Describe("Misc", func() {
@@ -844,10 +899,14 @@ func TestRequest(t *testing.T) {
 				}))
 				defer ts.Close()
 
-				req := Request{Uri: ts.URL, Host: "foobar.com"}
-				res, err := req.Do()
-				Expect(err).ShouldNot(HaveOccurred())
+				client := NewClient(Options{})
+				request := Request{
+					Uri:  ts.URL,
+					Host: "foobar.com",
+				}
+				res, err := client.Do(request)
 
+				Expect(err).ShouldNot(HaveOccurred())
 				Expect(res.StatusCode).Should(Equal(200))
 			})
 
@@ -864,11 +923,21 @@ func TestRequest(t *testing.T) {
 				}))
 				defer ts.Close()
 
-				req := Request{Uri: ts.URL, Accept: "application/json", ContentType: "application/json", UserAgent: "foobaragent", Host: "foobar.com"}
-				req.AddHeader("X-Custom", "foobar")
-				res, _ := req.WithHeader("X-Custom2", "barfoo").Do()
+				client := NewClient(Options{})
+				request := Request{
+					Uri:         ts.URL,
+					Accept:      "application/json",
+					ContentType: "application/json",
+					UserAgent:   "foobaragent",
+					Host:        "foobar.com",
+				}
+				request.AddHeader("X-Custom", "foobar")
+				request.AddHeader("X-Custom2", "barfoo")
+
+				res, err := client.Do(request)
 
 				Expect(res.StatusCode).Should(Equal(200))
+				Expect(err).ShouldNot(HaveOccurred())
 			})
 
 			g.It("Should call hook before request", func() {
@@ -879,16 +948,20 @@ func TestRequest(t *testing.T) {
 				}))
 				defer ts.Close()
 
+				client := NewClient(Options{})
 				hook := func(goreq *Request, httpreq *http.Request) {
 					httpreq.Header.Add("X-Custom", "foobar")
 				}
-				req := Request{Uri: ts.URL, OnBeforeRequest: hook}
-				res, _ := req.Do()
+				request := Request{
+					Uri:             ts.URL,
+					OnBeforeRequest: hook,
+				}
+				res, _ := client.Do(request)
 
 				Expect(res.StatusCode).Should(Equal(200))
 			})
 
-			g.It("Should not create a body by defualt", func() {
+			g.It("Should not create a body by default", func() {
 				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					b, _ := ioutil.ReadAll(r.Body)
 					Expect(b).Should(HaveLen(0))
@@ -896,23 +969,32 @@ func TestRequest(t *testing.T) {
 				}))
 				defer ts.Close()
 
-				req := Request{Uri: ts.URL, Host: "foobar.com"}
-				req.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Uri:  ts.URL,
+					Host: "foobar.com",
+				}
+				client.Do(request)
 			})
+
 			g.It("Should change transport TLS config if Request.Insecure is set", func() {
 				ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(200)
 				}))
 				defer ts.Close()
 
-				req := Request{
+				client := NewClient(Options{
 					Insecure: true,
-					Uri:      ts.URL,
-					Host:     "foobar.com",
+				})
+				request := Request{
+					Uri:  ts.URL,
+					Host: "foobar.com",
 				}
-				res, _ := req.Do()
+				res, _ := client.Do(request)
 
-				Expect(DefaultClient.Transport.(*http.Transport).TLSClientConfig.InsecureSkipVerify).Should(Equal(true))
+				if transport, ok := client.Transport.(*http.Transport); ok {
+					Expect(transport.TLSClientConfig.InsecureSkipVerify).Should(Equal(true))
+				}
 				Expect(res.StatusCode).Should(Equal(200))
 			})
 			g.It("Should work if a different transport is specified", func() {
@@ -920,21 +1002,26 @@ func TestRequest(t *testing.T) {
 					w.WriteHeader(200)
 				}))
 				defer ts.Close()
-				var currentTransport = DefaultTransport
-				DefaultTransport = &http.Transport{Dial: DefaultDialer.Dial}
 
-				req := Request{
-					Insecure: true,
-					Uri:      ts.URL,
-					Host:     "foobar.com",
+				dialer := &net.Dialer{Timeout: 1000 * time.Millisecond}
+				transport := &http.Transport{
+					DialContext:     dialer.DialContext,
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				}
-				res, _ := req.Do()
 
-				Expect(DefaultClient.Transport.(*http.Transport).TLSClientConfig.InsecureSkipVerify).Should(Equal(true))
+				client := NewClient(Options{})
+				client.Transport = transport
+
+				request := Request{
+					Uri:  ts.URL,
+					Host: "foobar.com",
+				}
+				res, _ := client.Do(request)
+
+				if transport, ok := client.Transport.(*http.Transport); ok {
+					Expect(transport.TLSClientConfig.InsecureSkipVerify).Should(Equal(true))
+				}
 				Expect(res.StatusCode).Should(Equal(200))
-
-				DefaultTransport = currentTransport
-
 			})
 			g.It("GetRequest should return the underlying httpRequest ", func() {
 				req := Request{
@@ -944,27 +1031,6 @@ func TestRequest(t *testing.T) {
 				request, _ := req.NewRequest()
 				Expect(request).ShouldNot(BeNil())
 				Expect(request.Host).Should(Equal(req.Host))
-			})
-
-			g.It("Response should allow to cancel in-flight request", func() {
-				unblockc := make(chan bool)
-				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					fmt.Fprintf(w, "Hello")
-					w.(http.Flusher).Flush()
-					<-unblockc
-				}))
-				defer ts.Close()
-				defer close(unblockc)
-
-				req := Request{
-					Insecure: true,
-					Uri:      ts.URL,
-					Host:     "foobar.com",
-				}
-				res, _ := req.Do()
-				res.CancelRequest()
-				_, err := ioutil.ReadAll(res.Body)
-				g.Assert(err != nil).IsTrue()
 			})
 		})
 
@@ -985,45 +1051,53 @@ func TestRequest(t *testing.T) {
 				ts.Close()
 			})
 			g.It("Should throw an error when FromJsonTo fails", func() {
-				res, _ := Request{Method: "POST", Uri: ts.URL, Body: `{"foo" "bar"}`}.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Method: "POST",
+					Uri:    ts.URL,
+					Body:   `{"foo" "bar"}`,
+				}
+				res, _ := client.Do(request)
+
 				var foobar map[string]string
 
 				err := res.Body.FromJsonTo(&foobar)
 				Expect(err).Should(HaveOccurred())
 			})
 			g.It("Should handle Url parsing errors", func() {
-				_, err := Request{Uri: ":"}.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Uri: ":",
+				}
+				_, err := client.Do(request)
 
 				Expect(err).ShouldNot(BeNil())
 			})
 			g.It("Should handle DNS errors", func() {
-				_, err := Request{Uri: "http://.localhost"}.Do()
+				client := NewClient(Options{})
+				request := Request{
+					Uri: "http://.localhost",
+				}
+				_, err := client.Do(request)
+
 				Expect(err).ShouldNot(BeNil())
 			})
 		})
 
 		g.Describe("Proxy", func() {
 			var ts *httptest.Server
-			var lastReq *http.Request
 			g.Before(func() {
 				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.Method == "GET" && r.URL.Path == "/" {
-						lastReq = r
 						w.Header().Add("x-forwarded-for", "test")
 						w.Header().Add("Set-Cookie", "foo=bar")
 						w.WriteHeader(200)
 						w.Write([]byte(""))
 					} else if r.Method == "GET" && r.URL.Path == "/redirect_test/301" {
 						http.Redirect(w, r, "/", 301)
-					} else if r.Method == "CONNECT" {
-						lastReq = r
 					}
 				}))
 
-			})
-
-			g.BeforeEach(func() {
-				lastReq = nil
 			})
 
 			g.After(func() {
@@ -1032,15 +1106,29 @@ func TestRequest(t *testing.T) {
 
 			g.It("Should use Proxy", func() {
 				proxiedHost := "www.google.com"
-				res, err := Request{Uri: "http://" + proxiedHost, Proxy: ts.URL}.Do()
+				client := NewClient(Options{
+					Proxy: ts.URL,
+				})
+				request := Request{
+					Uri: "http://" + proxiedHost,
+				}
+				res, err := client.Do(request)
+
 				Expect(err).Should(BeNil())
 				Expect(res.Header.Get("x-forwarded-for")).Should(Equal("test"))
-				Expect(lastReq).ShouldNot(BeNil())
-				Expect(lastReq.Host).Should(Equal(proxiedHost))
+				Expect(res.Response.Request).ShouldNot(BeNil())
+				Expect(res.req.URL.Hostname()).Should(Equal(proxiedHost))
 			})
 
 			g.It("Should not redirect if MaxRedirects is not set", func() {
-				res, err := Request{Uri: ts.URL + "/redirect_test/301", Proxy: ts.URL}.Do()
+				client := NewClient(Options{
+					Proxy: ts.URL,
+				})
+				request := Request{
+					Uri: ts.URL + "/redirect_test/301",
+				}
+				res, err := client.Do(request)
+
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(res.StatusCode).Should(Equal(301))
 			})
@@ -1048,17 +1136,32 @@ func TestRequest(t *testing.T) {
 			g.It("Should use Proxy authentication", func() {
 				proxiedHost := "www.google.com"
 				uri := strings.Replace(ts.URL, "http://", "http://user:pass@", -1)
-				res, err := Request{Uri: "http://" + proxiedHost, Proxy: uri}.Do()
+
+				client := NewClient(Options{
+					Proxy: uri,
+				})
+				request := Request{
+					Uri: "http://" + proxiedHost,
+				}
+				res, err := client.Do(request)
+
 				Expect(err).Should(BeNil())
 				Expect(res.Header.Get("x-forwarded-for")).Should(Equal("test"))
-				Expect(lastReq).ShouldNot(BeNil())
-				Expect(lastReq.Header.Get("Proxy-Authorization")).Should(Equal("Basic dXNlcjpwYXNz"))
 			})
 
 			g.It("Should propagate cookies", func() {
 				proxiedHost, _ := url.Parse("http://www.google.com")
 				jar, _ := cookiejar.New(nil)
-				res, err := Request{Uri: proxiedHost.String(), Proxy: ts.URL, CookieJar: jar}.Do()
+
+				client := NewClient(Options{
+					Proxy:     ts.URL,
+					CookieJar: jar,
+				})
+				request := Request{
+					Uri: proxiedHost.String(),
+				}
+				res, err := client.Do(request)
+
 				Expect(err).Should(BeNil())
 				Expect(res.Header.Get("x-forwarded-for")).Should(Equal("test"))
 
@@ -1068,13 +1171,24 @@ func TestRequest(t *testing.T) {
 			})
 
 			g.It("Should use ProxyConnectHeader authentication", func() {
-				_, err := Request{Uri: "https://10.255.255.1",
-					Proxy:    ts.URL,
-					Insecure: true,
-				}.WithProxyConnectHeader("X-TEST-HEADER", "TEST").Do()
+				proxyHeaders := make(http.Header)
+				proxyHeaders.Add("X-TEST-HEADER", "TEST")
 
-				Expect(err).ShouldNot(BeNil())
-				Expect(lastReq.Header.Get("X-TEST-HEADER")).Should(Equal("TEST"))
+				client := NewClient(Options{
+					Proxy:               ts.URL,
+					Insecure:            true,
+					ProxyConnectHeaders: proxyHeaders,
+				})
+				request := Request{
+					Uri: "http://10.255.255.1",
+				}
+
+				_, err := client.Do(request)
+
+				if transport, ok := client.Transport.(*http.Transport); ok {
+					Expect(transport.ProxyConnectHeader.Get("X-TEST-HEADER")).Should(Equal("TEST"))
+				}
+				Expect(err).Should(BeNil())
 			})
 
 		})
@@ -1085,9 +1199,9 @@ func TestRequest(t *testing.T) {
 			g.Before(func() {
 				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "/basic_auth" {
-						auth_array := r.Header["Authorization"]
-						if len(auth_array) > 0 {
-							auth := strings.TrimSpace(auth_array[0])
+						authArray := r.Header["Authorization"]
+						if len(authArray) > 0 {
+							auth := strings.TrimSpace(authArray[0])
 							w.WriteHeader(200)
 							fmt.Fprint(w, auth)
 						} else {
@@ -1104,11 +1218,14 @@ func TestRequest(t *testing.T) {
 			})
 
 			g.It("Should support basic http authorization", func() {
-				res, err := Request{
+				client := NewClient(Options{})
+				request := Request{
 					Uri:               ts.URL + "/basic_auth",
 					BasicAuthUsername: "username",
 					BasicAuthPassword: "password",
-				}.Do()
+				}
+				res, err := client.Do(request)
+
 				Expect(err).Should(BeNil())
 				str, _ := res.Body.ToString()
 				Expect(res.StatusCode).Should(Equal(200))
@@ -1117,9 +1234,12 @@ func TestRequest(t *testing.T) {
 			})
 
 			g.It("Should fail when basic http authorization is required and not provided", func() {
-				res, err := Request{
+				client := NewClient(Options{})
+				request := Request{
 					Uri: ts.URL + "/basic_auth",
-				}.Do()
+				}
+				res, err := client.Do(request)
+
 				Expect(err).Should(BeNil())
 				str, _ := res.Body.ToString()
 				Expect(res.StatusCode).Should(Equal(401))
@@ -1215,109 +1335,4 @@ func Test_paramParse(t *testing.T) {
 		})
 	})
 
-}
-
-func TestConcurrencyRequest(t *testing.T) {
-	g := goblin.Goblin(t)
-	RegisterFailHandler(func(m string, _ ...int) { g.Fail(m) })
-
-	g.Describe("Concurrency Request", func() {
-		var ts *httptest.Server
-		var lastReq *http.Request
-		// var requestHeaders http.Header
-
-		g.Before(func() {
-			ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// requestHeaders = r.Header
-				if r.Method == "GET" && r.URL.Path == "/foo" {
-					w.WriteHeader(200)
-					fmt.Fprint(w, "bar")
-
-				} else if r.Method == "GET" && r.URL.Path == "/" {
-					lastReq = r
-					w.Header().Add("x-forwarded-for", "test")
-					w.Header().Add("Set-Cookie", "foo=bar")
-					w.WriteHeader(200)
-					w.Write([]byte(""))
-				}
-			}))
-		})
-
-		g.After(func() {
-			ts.Close()
-		})
-
-		g.It("Should do 10 requests", func() {
-			var wg sync.WaitGroup
-
-			for i := 0; i < 10; i++ {
-				wg.Add(1)
-
-				go func() {
-					defer wg.Done()
-					res, err := Request{Uri: ts.URL + "/foo"}.Do()
-
-					Expect(err).Should(BeNil())
-
-					str, _ := res.Body.ToString()
-					Expect(str).Should(Equal("bar"))
-					Expect(res.StatusCode).Should(Equal(200))
-				}()
-			}
-			wg.Wait()
-		})
-
-		g.It("Should do 10 requests with the same client", func() {
-			var wg sync.WaitGroup
-
-			dialer := &net.Dialer{Timeout: 1000 * time.Second}
-			transport := &http.Transport{
-				Dial:                dialer.Dial,
-				Proxy:               http.ProxyFromEnvironment,
-				MaxIdleConnsPerHost: 250,
-			}
-			client := &http.Client{Transport: transport}
-			request := Request{
-				Uri:    ts.URL + "/foo",
-				Client: client,
-			}
-
-			for i := 0; i < 10; i++ {
-				wg.Add(1)
-
-				go func() {
-					defer wg.Done()
-					res, err := request.Do()
-
-					Expect(err).Should(BeNil())
-
-					str, _ := res.Body.ToString()
-					Expect(str).Should(Equal("bar"))
-					Expect(res.StatusCode).Should(Equal(200))
-				}()
-			}
-			wg.Wait()
-		})
-
-		g.It("Should do 10 requests with proxy", func() {
-			var wg sync.WaitGroup
-
-			for i := 0; i < 10; i++ {
-				wg.Add(1)
-
-				go func() {
-					defer wg.Done()
-
-					proxiedHost := "www.google.com"
-					res, err := Request{Uri: "http://" + proxiedHost, Proxy: ts.URL}.Do()
-					Expect(err).Should(BeNil())
-					Expect(res.Header.Get("x-forwarded-for")).Should(Equal("test"))
-					Expect(lastReq).ShouldNot(BeNil())
-					Expect(lastReq.Host).Should(Equal(proxiedHost))
-				}()
-			}
-			wg.Wait()
-		})
-
-	})
 }

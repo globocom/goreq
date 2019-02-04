@@ -1,3 +1,3 @@
 test:
 	go get -v -d -t ./...
-	go test -v -race
+	go test -v -cpu=2 -race
