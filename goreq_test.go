@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -1255,6 +1256,38 @@ func TestConcurrencyRequest(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					res, err := Request{Uri: ts.URL + "/foo"}.Do()
+
+					Expect(err).Should(BeNil())
+
+					str, _ := res.Body.ToString()
+					Expect(str).Should(Equal("bar"))
+					Expect(res.StatusCode).Should(Equal(200))
+				}()
+			}
+			wg.Wait()
+		})
+
+		g.It("Should do 10 requests with the same client", func() {
+			var wg sync.WaitGroup
+
+			dialer := &net.Dialer{Timeout: 1000 * time.Second}
+			transport := &http.Transport{
+				Dial:                dialer.Dial,
+				Proxy:               http.ProxyFromEnvironment,
+				MaxIdleConnsPerHost: 250,
+			}
+			client := &http.Client{Transport: transport}
+			request := Request{
+				Uri:    ts.URL + "/foo",
+				Client: client,
+			}
+
+			for i := 0; i < 10; i++ {
+				wg.Add(1)
+
+				go func() {
+					defer wg.Done()
+					res, err := request.Do()
 
 					Expect(err).Should(BeNil())
 
