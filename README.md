@@ -1,5 +1,5 @@
-[![Build Status](https://img.shields.io/travis/franela/goreq/master.svg)](https://travis-ci.org/franela/goreq)
-[![GoDoc](https://godoc.org/github.com/franela/goreq?status.svg)](https://godoc.org/github.com/franela/goreq)
+[![Build Status](https://img.shields.io/travis/globocom/goreq/master.svg)](https://travis-ci.org/globocom/goreq)
+[![GoDoc](https://godoc.org/github.com/globocom/goreq?status.svg)](https://godoc.org/github.com/globocom/goreq)
 
 GoReq
 =======
@@ -13,6 +13,7 @@ Simple and sane HTTP request library for Go language.
 - [Why GoReq?](#user-content-why-goreq)
 - [How do I install it?](#user-content-how-do-i-install-it)
 - [What can I do with it?](#user-content-what-can-i-do-with-it)
+  - [Create a client](#user-content-create-a-client)
   - [Making requests with different methods](#user-content-making-requests-with-different-methods)
   - [GET](#user-content-get)
     - [Tags](#user-content-tags)
@@ -20,7 +21,6 @@ Simple and sane HTTP request library for Go language.
     - [Sending payloads in the Body](#user-content-sending-payloads-in-the-body)
   - [Specifiying request headers](#user-content-specifiying-request-headers)
   - [Sending Cookies](#cookie-support)
-  - [Setting timeouts](#user-content-setting-timeouts)
  - [Using the Response and Error](#user-content-using-the-response-and-error)
  - [Receiving JSON](#user-content-receiving-json)
  - [Sending/Receiving Compressed Payloads](#user-content-sendingreceiving-compressed-payloads)
@@ -45,17 +45,45 @@ How do I install it?
 ====================
 
 ```bash
-go get github.com/franela/goreq
+go get github.com/globocom/goreq
 ```
 
 What can I do with it?
 ======================
 
+## Create a client
+```go
+options := Options{
+	Insecure: true,
+	Timeout:  time.Duration(20 * time.Second),
+}
+
+client := NewClient(options)
+```
+
+You can create a client with the following configuration options:
+
+```go
+type Options struct {
+	Timeout             time.Duration   // Timeout specifies a time for request made by this client
+	Insecure            bool            // Insecure specifies 
+	MaxRedirects        int             // MaxRedirect specifies a limit redirects for policy redirect
+	CookieJar           http.CookieJar  // CookieJar specifies a jar used for insert cookies
+	Proxy               string          // Proxy specifies an url proxy
+	ProxyConnectHeaders http.Header     // ProxyConnectHeaders specifies a header's proxy
+	MaxIdleConnsPerHost int             // MaxIdleConnsPerHost specifies a limit connections to keep per-host
+}
+```
+
 ## Making requests with different methods
 
 #### GET
 ```go
-res, err := goreq.Request{ Uri: "http://www.google.com" }.Do()
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{ Uri: "http://www.google.com" }
+
+res, err := client.Do(req)
 ```
 
 GoReq default method is GET.
@@ -75,10 +103,14 @@ item := Item {
         Fields: "Value",
 }
 
-res, err := goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
         Uri: "http://localhost:3000/",
         QueryString: item,
-}.Do()
+}
+
+res, err := client.Do(req)
 ```
 The sample above will send `http://localhost:3000/?limit=3&skip=5&fields=Value`
 
@@ -97,10 +129,14 @@ item := Item {
         TheFields: "Value",
 }
 
-res, err := goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
         Uri: "http://localhost:3000/",
         QueryString: item,
-}.Do()
+}
+
+res, err := client.Do(req)
 ```
 The sample above will send `http://localhost:3000/?the_limit=3`
 
@@ -113,10 +149,14 @@ item.Set("Limit", 3)
 item.Add("Field", "somefield")
 item.Add("Field", "someotherfield")
 
-res, err := goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
         Uri: "http://localhost:3000/",
         QueryString: item,
-}.Do()
+}
+
+res, err := client.Do(req)
 ```
 
 The sample above will send `http://localhost:3000/?limit=3&field=somefield&field=someotherfield`
@@ -163,10 +203,14 @@ johnbull := Person{
 	Password:  "my-secret", // ignored for parameter
 }
 
-goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
 	Uri:         "http://localhost/",
 	QueryString: johnbull,
-}.Do()
+}
+
+res, err := client.Do(req)
 // =>  `http://localhost/?first_name=John&last_name=Doe&age=35&country=UK&city=London&zip_code=SW1`
 
 
@@ -180,10 +224,14 @@ samurai := Person{
 	LastName: "Yagyu",
 }
 
-goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
 	Uri:         "http://localhost/",
 	QueryString: samurai,
-}.Do()
+}
+
+res, err := client.Do(req)
 // =>  `http://localhost/?first_name=&last_name=yagyu&country=Japan&city=Tokyo`
 ```
 
@@ -191,7 +239,11 @@ goreq.Request{
 #### POST
 
 ```go
-res, err := goreq.Request{ Method: "POST", Uri: "http://www.google.com" }.Do()
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{ Method: "POST", Uri: "http://www.google.com" }
+
+res, err := client.Do(req)
 ```
 
 ## Sending payloads in the Body
@@ -206,11 +258,15 @@ type Item struct {
 
 item := Item{ Id: 1111, Name: "foobar" }
 
-res, err := goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
     Method: "POST",
     Uri: "http://www.google.com",
     Body: item,
-}.Do()
+}
+
+res, err := client.Do(req)
 ```
 
 ## Specifiying request headers
@@ -218,61 +274,45 @@ res, err := goreq.Request{
 We think that most of the times the request headers that you use are: ```Host```, ```Content-Type```, ```Accept``` and ```User-Agent```. This is why we decided to make it very easy to set these headers.
 
 ```go
-res, err := goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
     Uri: "http://www.google.com",
     Host: "foobar.com",
     Accept: "application/json",
     ContentType: "application/json",
     UserAgent: "goreq",
-}.Do()
+}
+
+res, err := client.Do(req)
 ```
 
 But sometimes you need to set other headers. You can still do it.
 
 ```go
+client := goreq.NewClient(goreq.Options{})
+
 req := goreq.Request{ Uri: "http://www.google.com" }
 
 req.AddHeader("X-Custom", "somevalue")
 
-req.Do()
-```
-
-Alternatively you can use the `WithHeader` function to keep the syntax short
-
-```go
-res, err = goreq.Request{ Uri: "http://www.google.com" }.WithHeader("X-Custom", "somevalue").Do()
+res, err := client.Do(req)
 ```
 
 ## Cookie support
 
 Cookies can be either set at the request level by sending a [CookieJar](http://golang.org/pkg/net/http/cookiejar/) in the `CookieJar` request field
-or you can use goreq's one-liner WithCookie method as shown below
+or you can use goreq's one-liner AddCookie method as shown below
 
 ```go
-res, err := goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
     Uri: "http://www.google.com",
-}.
-WithCookie(&http.Cookie{Name: "c1", Value: "v1"}).
-Do()
-```
+}
+req.AddCookie(&http.Cookie{Name: "c1", Value: "v1"})
 
-## Setting timeouts
-
-GoReq supports 2 kind of timeouts. A general connection timeout and a request specific one. By default the connection timeout is of 1 second. There is no default for request timeout, which means it will wait forever.
-
-You can change the connection timeout doing:
-
-```go
-goreq.SetConnectTimeout(100 * time.Millisecond)
-```
-
-And specify the request timeout doing:
-
-```go
-res, err := goreq.Request{
-    Uri: "http://www.google.com",
-    Timeout: 500 * time.Millisecond,
-}.Do()
+res, err := client.Do(req)
 ```
 
 ## Using the Response and Error
@@ -326,21 +366,29 @@ GoReq supports gzip, deflate and zlib compression of requests' body and transpar
 
 ##### Using gzip compression:
 ```go
-res, err := goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
     Method: "POST",
     Uri: "http://www.google.com",
     Body: item,
     Compression: goreq.Gzip(),
-}.Do()
+}
+
+res, err := client.Do(req)
 ```
 ##### Using deflate/zlib compression:
 ```go
-res, err := goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
     Method: "POST",
     Uri: "http://www.google.com",
     Body: item,
     Compression: goreq.Deflate(),
-}.Do()
+}
+
+res, err := client.Do(req)
 ```
 ##### Using compressed responses:
 If servers replies a correct and matching `Content-Encoding` header (gzip requires `Content-Encoding: gzip` and deflate `Content-Encoding: deflate`) goreq transparently decompresses the response so the previous example should always work:
@@ -349,12 +397,18 @@ type Item struct {
     Id int
     Name string
 }
-res, err := goreq.Request{
+
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
     Method: "POST",
     Uri: "http://www.google.com",
     Body: item,
     Compression: goreq.Gzip(),
-}.Do()
+}
+
+res, err := client.Do(req)
+
 var item Item
 res.Body.FromJsonTo(&item)
 ```
@@ -364,33 +418,47 @@ If no `Content-Encoding` header is replied by the server GoReq will return the c
 If you need to use a proxy for your requests GoReq supports the standard `http_proxy` env variable as well as manually setting the proxy for each request
 
 ```go
-res, err := goreq.Request{
-    Method: "GET",
+client := goreq.NewClient(goreq.Options{
     Proxy: "http://myproxy:myproxyport",
+})
+
+req := goreq.Request{
+    Method: "GET",
     Uri: "http://www.google.com",
-}.Do()
+}
+
+res, err := client.Do(req)
 ```
 
 ### Proxy basic auth is also supported
 
 ```go
-res, err := goreq.Request{
-    Method: "GET",
+client := goreq.NewClient(goreq.Options{
     Proxy: "http://user:pass@myproxy:myproxyport",
+})
+
+req := goreq.Request{
+    Method: "GET",
     Uri: "http://www.google.com",
-}.Do()
+}
+
+res, err := client.Do(req)
 ```
 
 ## Debug
 If you need to debug your http requests, it can print the http request detail.
 
 ```go
-res, err := goreq.Request{
+client := goreq.NewClient(goreq.Options{})
+
+req := goreq.Request{
 	Method:      "GET",
 	Uri:         "http://www.google.com",
 	Compression: goreq.Gzip(),
 	ShowDebug:   true,
-}.Do()
+}
+
+res, err := client.Do(req)
 fmt.Println(res, err)
 ```
 
@@ -423,12 +491,15 @@ request, _ := req.NewRequest()
 To get the Response:
 
 ```go
+client := goreq.NewClient(goreq.Options{})
+
 res, err := goreq.Request{
 	Method:      "GET",
 	Uri:         "http://www.google.com",
 	Compression: goreq.Gzip(),
 	ShowDebug:   true,
-}.Do()
+}
+res, err := client.Do(req)
 
 // res.Response will contain the original http.Response structure 
 fmt.Println(res.Response, err)
@@ -440,5 +511,5 @@ fmt.Println(res.Response, err)
 TODO:
 -----
 
-We do have a couple of [issues](https://github.com/franela/goreq/issues) pending we'll be addressing soon. But feel free to
+We do have a couple of [issues](https://github.com/globocom/goreq/issues) pending we'll be addressing soon. But feel free to
 contribute and send us PRs (with tests please :smile:).
