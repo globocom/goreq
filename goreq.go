@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -242,8 +243,13 @@ func (r Request) addHeaders(headersMap http.Header) {
 	}
 }
 
-//NewRequest returns a new Request given a method, URL, and optional body.
+// NewRequest wraps NewRequestWithContext using context.Background.
 func (r Request) NewRequest() (*http.Request, error) {
+	return r.NewRequestWithContext(context.Background())
+}
+
+//NewRequestWithContext returns a new Request given a method, URL, and optional body.
+func (r Request) NewRequestWithContext(ctx context.Context) (*http.Request, error) {
 
 	r.valueOrDefault()
 	b, e := prepareRequestBody(r.Body)
@@ -278,7 +284,7 @@ func (r Request) NewRequest() (*http.Request, error) {
 		bodyReader = b
 	}
 
-	req, err := http.NewRequest(r.Method, r.Uri, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, r.Method, r.Uri, bodyReader)
 	if err != nil {
 		return nil, err
 	}

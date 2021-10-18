@@ -1,6 +1,7 @@
 package goreq
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"log"
@@ -137,15 +138,20 @@ func (client Client) setConnectTimeout(timeout time.Duration) {
 	}
 }
 
-//Do sends an HTTP request and returns an HTTP response,
-//following policy (such as redirects, cookies, auth) as configured on the client.
+//Do wraps DoWithContext using context.Background.
 func (client Client) Do(request Request) (*Response, error) {
+	return client.DoWithContext(context.Background(), request)
+}
+
+//DoWithContext sends an HTTP request and returns an HTTP response,
+//following policy (such as redirects, cookies, auth) as configured on the client.
+func (client Client) DoWithContext(ctx context.Context, request Request) (*Response, error) {
 
 	if erro := client.check(); erro != nil {
 		return nil, erro
 	}
 
-	req, err := request.NewRequest()
+	req, err := request.NewRequestWithContext(ctx)
 	if err != nil {
 		return nil, &Error{Err: err}
 	}
