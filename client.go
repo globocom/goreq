@@ -3,7 +3,7 @@ package goreq
 import (
 	"crypto/tls"
 	"errors"
-	"log"
+	"github.com/rs/zerolog/log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -153,9 +153,9 @@ func (client Client) Do(request Request) (*Response, error) {
 	if request.ShowDebug {
 		dump, err := httputil.DumpRequest(req, true)
 		if err != nil {
-			log.Println(err)
+			log.Error().Err(err)
 		}
-		log.Println(string(dump))
+		log.Debug().Msg(string(dump))
 	}
 
 	if request.OnBeforeRequest != nil {
