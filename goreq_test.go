@@ -3,6 +3,7 @@ package goreq
 import (
 	"compress/gzip"
 	"compress/zlib"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -164,6 +165,11 @@ func TestRequest(t *testing.T) {
 					if r.Method == "POST" && r.URL.Path == "/compressed_and_return_compressed_without_header" {
 						defer r.Body.Close()
 						w.WriteHeader(201)
+						io.Copy(w, r.Body)
+					}
+					if (r.Method == "GET") && r.URL.Path == "/timeout" {
+						defer r.Body.Close()
+						w.WriteHeader(200)
 						io.Copy(w, r.Body)
 					}
 				}))
@@ -491,6 +497,24 @@ func TestRequest(t *testing.T) {
 						Name:  "foobar",
 						Value: "42",
 					}))
+				})
+
+				g.It("Should cancel the request", func() {
+					ctx, cancel := context.WithCancel(context.Background())
+
+					client := NewClient(Options{})
+					request := Request{
+						Uri:     ts.URL + "/timeout",
+						Context: ctx,
+					}
+					res, err := client.Do(request)
+
+					cancel()
+
+					<-ctx.Done()
+
+					Expect(err).Should(BeNil())
+					Expect(res.StatusCode).Should(Equal(200))
 				})
 			})
 

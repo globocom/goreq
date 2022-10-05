@@ -150,6 +150,10 @@ func (client Client) Do(request Request) (*Response, error) {
 		return nil, &Error{Err: err}
 	}
 
+	if request.Context != nil {
+		req.WithContext(request.Context)
+	}
+
 	if request.ShowDebug {
 		dump, err := httputil.DumpRequest(req, true)
 		if err != nil {

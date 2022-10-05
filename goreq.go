@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+
+	"golang.org/x/net/context"
 )
 
 type itimeout interface {
@@ -37,6 +39,7 @@ type Request struct {
 	BasicAuthPassword string
 	ShowDebug         bool
 	OnBeforeRequest   func(goreq *Request, httpreq *http.Request)
+	Context           context.Context
 }
 
 type compression struct {
