@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 	defaultClientTLS         = false
 )
 
-//Options for create a client.
+// Options for create a client.
 type Options struct {
 	Timeout             time.Duration
 	Insecure            bool
@@ -33,7 +33,7 @@ type Options struct {
 	MaxIdleConnsPerHost int
 }
 
-//AddProxyConnectHeader add an Proxy connect header.
+// AddProxyConnectHeader add an Proxy connect header.
 func (options Options) AddProxyConnectHeader(name string, value string) {
 	if options.ProxyConnectHeaders == nil {
 		options.ProxyConnectHeaders = make(http.Header)
@@ -41,7 +41,7 @@ func (options Options) AddProxyConnectHeader(name string, value string) {
 	options.ProxyConnectHeaders.Add(name, value)
 }
 
-//Client for do request in http.
+// Client for do request in http.
 type Client struct {
 	*http.Client
 }
@@ -137,8 +137,8 @@ func (client Client) setConnectTimeout(timeout time.Duration) {
 	}
 }
 
-//Do sends an HTTP request and returns an HTTP response,
-//following policy (such as redirects, cookies, auth) as configured on the client.
+// Do sends an HTTP request and returns an HTTP response,
+// following policy (such as redirects, cookies, auth) as configured on the client.
 func (client Client) Do(request Request) (*Response, error) {
 
 	if erro := client.check(); erro != nil {
