@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -20,7 +19,7 @@ type itimeout interface {
 	Timeout() bool
 }
 
-//Request represents an HTTP request to be sent by a client.
+// Request represents an HTTP request to be sent by a client.
 type Request struct {
 	headers           []headerTuple
 	cookies           []*http.Cookie
@@ -45,7 +44,7 @@ type compression struct {
 	ContentEncoding string
 }
 
-//Response represents the response from an HTTP request.
+// Response represents the response from an HTTP request.
 type Response struct {
 	*http.Response
 	Uri  string
@@ -96,7 +95,7 @@ func (b *Body) FromJsonTo(o interface{}) error {
 }
 
 func (b *Body) ToString() (string, error) {
-	body, err := ioutil.ReadAll(b)
+	body, err := io.ReadAll(b)
 	if err != nil {
 		return "", err
 	}
@@ -217,7 +216,7 @@ func prepareRequestBody(b interface{}) (io.Reader, error) {
 	}
 }
 
-//AddHeader add header in request.
+// AddHeader add header in request.
 func (request *Request) AddHeader(name string, value string) {
 	if request.headers == nil {
 		request.headers = []headerTuple{}
@@ -225,7 +224,7 @@ func (request *Request) AddHeader(name string, value string) {
 	request.headers = append(request.headers, headerTuple{name: name, value: value})
 }
 
-//AddCookie add cookie in request.
+// AddCookie add cookie in request.
 func (request *Request) AddCookie(cookie *http.Cookie) {
 	request.cookies = append(request.cookies, cookie)
 }
@@ -242,7 +241,7 @@ func (r Request) addHeaders(headersMap http.Header) {
 	}
 }
 
-//NewRequest returns a new Request given a method, URL, and optional body.
+// NewRequest returns a new Request given a method, URL, and optional body.
 func (r Request) NewRequest() (*http.Request, error) {
 
 	r.valueOrDefault()
