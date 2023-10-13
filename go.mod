@@ -1,4 +1,4 @@
-module goreq
+module github.com/OmarMesqq/goreq
 
 go 1.21.2
 
