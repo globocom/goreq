@@ -307,7 +307,7 @@ func (r Request) NewRequest() (*http.Request, error) {
 }
 
 // Return value if nonempty, def otherwise.
-func (request Request) valueOrDefault() {
+func (request *Request) valueOrDefault() {
 	if request.Method == "" {
 		request.Method = "GET"
 	}
