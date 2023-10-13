@@ -289,19 +289,19 @@ func TestRedirectPolicy(t *testing.T) {
 		g.Before(func() {
 			ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == "GET" && r.URL.Path == "/redirect_test/301" {
-					http.Redirect(w, r, "/redirect_test/302", 301)
+					http.Redirect(w, r, "/redirect_test/302", http.StatusMovedPermanently)
 				}
 				if r.Method == "GET" && r.URL.Path == "/redirect_test/302" {
-					http.Redirect(w, r, "/redirect_test/303", 302)
+					http.Redirect(w, r, "/redirect_test/303", http.StatusFound)
 				}
 				if r.Method == "GET" && r.URL.Path == "/redirect_test/303" {
-					http.Redirect(w, r, "/redirect_test/307", 303)
+					http.Redirect(w, r, "/redirect_test/307", http.StatusSeeOther)
 				}
 				if r.Method == "GET" && r.URL.Path == "/redirect_test/307" {
-					http.Redirect(w, r, "/getquery", 307)
+					http.Redirect(w, r, "/getquery", http.StatusTemporaryRedirect)
 				}
 				if r.Method == "GET" && r.URL.Path == "/redirect_test/destination" {
-					http.Redirect(w, r, ts.URL+"/destination", 301)
+					http.Redirect(w, r, ts.URL+"/destination", http.StatusMovedPermanently)
 				}
 				if r.Method == "GET" && r.URL.Path == "/destination" {
 					w.WriteHeader(200)
