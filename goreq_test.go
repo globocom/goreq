@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net"
 	"net/http"
@@ -58,7 +57,7 @@ func TestRequest(t *testing.T) {
 					}
 					if r.Method == "GET" && r.URL.Path == "/getquery" {
 						w.WriteHeader(200)
-						fmt.Fprint(w, fmt.Sprintf("%v", r.URL))
+						fmt.Fprintf(w, "%v", r.URL)
 					}
 					if r.Method == "GET" && r.URL.Path == "/getbody" {
 						w.WriteHeader(200)
@@ -71,7 +70,7 @@ func TestRequest(t *testing.T) {
 					}
 					if r.Method == "POST" && r.URL.Path == "/getquery" {
 						w.WriteHeader(200)
-						fmt.Fprint(w, fmt.Sprintf("%v", r.URL))
+						fmt.Fprintf(w, "%v", r.URL)
 					}
 					if r.Method == "PUT" && r.URL.Path == "/foo/123" {
 						w.WriteHeader(200)
@@ -132,7 +131,7 @@ func TestRequest(t *testing.T) {
 						defer r.Body.Close()
 						gr, _ := gzip.NewReader(r.Body)
 						defer gr.Close()
-						b, _ := ioutil.ReadAll(gr)
+						b, _ := io.ReadAll(gr)
 						w.WriteHeader(201)
 						w.Write(b)
 					}
@@ -140,7 +139,7 @@ func TestRequest(t *testing.T) {
 						defer r.Body.Close()
 						gr, _ := zlib.NewReader(r.Body)
 						defer gr.Close()
-						b, _ := ioutil.ReadAll(gr)
+						b, _ := io.ReadAll(gr)
 						w.WriteHeader(201)
 						w.Write(b)
 					}
@@ -306,7 +305,7 @@ func TestRequest(t *testing.T) {
 					}
 					res, err := client.Do(request)
 
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 
 					Expect(err).Should(BeNil())
 					Expect(res.Body.compressedReader).ShouldNot(BeNil())
@@ -326,21 +325,21 @@ func TestRequest(t *testing.T) {
 
 					Expect(err).Should(BeNil())
 
-					_, e := ioutil.ReadAll(res.Body.reader)
+					_, e := io.ReadAll(res.Body.reader)
 					Expect(e).Should(BeNil())
-					_, e = ioutil.ReadAll(res.Body.compressedReader)
+					_, e = io.ReadAll(res.Body.compressedReader)
 					Expect(e).Should(BeNil())
 
-					_, e = ioutil.ReadAll(res.Body.reader)
+					_, e = io.ReadAll(res.Body.reader)
 					//when reading body again it doesnt error
 					Expect(e).Should(BeNil())
 
 					res.Body.Close()
-					_, e = ioutil.ReadAll(res.Body.reader)
+					_, e = io.ReadAll(res.Body.reader)
 					//error because body is already closed
 					Expect(e).ShouldNot(BeNil())
 
-					_, e = ioutil.ReadAll(res.Body.compressedReader)
+					_, e = io.ReadAll(res.Body.compressedReader)
 					//compressedReaders dont error on reading when closed
 					Expect(e).Should(BeNil())
 				})
@@ -353,7 +352,7 @@ func TestRequest(t *testing.T) {
 					}
 					res, err := client.Do(request)
 
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 
 					Expect(err).Should(BeNil())
 					Expect(string(b)).ShouldNot(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
@@ -367,7 +366,7 @@ func TestRequest(t *testing.T) {
 					}
 					res, err := client.Do(request)
 
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 
 					Expect(err).Should(BeNil())
 					Expect(string(b)).Should(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
@@ -381,7 +380,7 @@ func TestRequest(t *testing.T) {
 					}
 					res, err := client.Do(request)
 
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 
 					Expect(err).Should(BeNil())
 					Expect(string(b)).ShouldNot(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
@@ -395,7 +394,7 @@ func TestRequest(t *testing.T) {
 					}
 					res, err := client.Do(request)
 
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 
 					Expect(err).Should(BeNil())
 					Expect(string(b)).Should(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
@@ -409,7 +408,7 @@ func TestRequest(t *testing.T) {
 					}
 					res, err := client.Do(request)
 
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 
 					Expect(err).Should(BeNil())
 					Expect(string(b)).ShouldNot(Equal("{\"foo\":\"bar\",\"fuu\":\"baz\"}"))
@@ -657,7 +656,7 @@ func TestRequest(t *testing.T) {
 					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 					Expect(string(b)).Should(Equal(`{"foo":"bar"}`))
 					Expect(res.StatusCode).Should(Equal(201))
 				})
@@ -674,7 +673,7 @@ func TestRequest(t *testing.T) {
 					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 					Expect(string(b)).Should(Equal(`{"foo":"bar"}`))
 					Expect(res.StatusCode).Should(Equal(201))
 				})
@@ -691,7 +690,7 @@ func TestRequest(t *testing.T) {
 					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 					Expect(string(b)).Should(Equal(`{"foo":"bar"}`))
 					Expect(res.StatusCode).Should(Equal(201))
 				})
@@ -708,7 +707,7 @@ func TestRequest(t *testing.T) {
 					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 					Expect(string(b)).ShouldNot(Equal(`{"foo":"bar"}`))
 					Expect(res.StatusCode).Should(Equal(201))
 				})
@@ -725,7 +724,7 @@ func TestRequest(t *testing.T) {
 					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 					Expect(string(b)).ShouldNot(Equal(`{"foo":"bar"}`))
 					Expect(res.StatusCode).Should(Equal(201))
 				})
@@ -742,7 +741,7 @@ func TestRequest(t *testing.T) {
 					res, err := client.Do(request)
 
 					Expect(err).Should(BeNil())
-					b, _ := ioutil.ReadAll(res.Body)
+					b, _ := io.ReadAll(res.Body)
 					Expect(string(b)).ShouldNot(Equal(`{"foo":"bar"}`))
 					Expect(res.StatusCode).Should(Equal(201))
 				})
@@ -854,7 +853,7 @@ func TestRequest(t *testing.T) {
 					}
 					res, _ := client.Do(request)
 
-					body, _ := ioutil.ReadAll(res.Body)
+					body, _ := io.ReadAll(res.Body)
 					Expect(string(body)).Should(Equal("foo bar"))
 				})
 
@@ -963,7 +962,7 @@ func TestRequest(t *testing.T) {
 
 			g.It("Should not create a body by default", func() {
 				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					b, _ := ioutil.ReadAll(r.Body)
+					b, _ := io.ReadAll(r.Body)
 					Expect(b).Should(HaveLen(0))
 					w.WriteHeader(200)
 				}))
@@ -1094,7 +1093,7 @@ func TestRequest(t *testing.T) {
 						w.WriteHeader(200)
 						w.Write([]byte(""))
 					} else if r.Method == "GET" && r.URL.Path == "/redirect_test/301" {
-						http.Redirect(w, r, "/", 301)
+						http.Redirect(w, r, "/", http.StatusMovedPermanently)
 					}
 				}))
 
