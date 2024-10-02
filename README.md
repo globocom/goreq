@@ -1,4 +1,3 @@
-[![Build Status](https://img.shields.io/travis/globocom/goreq/master.svg)](https://travis-ci.org/globocom/goreq)
 [![GoDoc](https://godoc.org/github.com/globocom/goreq?status.svg)](https://godoc.org/github.com/globocom/goreq)
 
 GoReq
