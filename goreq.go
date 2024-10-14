@@ -226,8 +226,15 @@ func (request *Request) AddHeader(name string, value string) {
 }
 
 //AddCookie add cookie in request.
-func (request *Request) AddCookie(cookie *http.Cookie) {
-	request.cookies = append(request.cookies, cookie)
+func (request *Request) AddCookie(cookie *Cookie) {
+	sanitize := fmt.Sprintf("%s=%s", sanitizeCookieName(cookie.Name), sanitizeCookieValue(cookie.Value))
+	if cookie := request.Header.Get("Cookie"); cookie != "" {
+		request.Header.Set("Cookie", cookie+"; "+sanitize)
+	} else {
+		request.Header.Set("Cookie", sanitize)
+	} else {
+		request.cookies = append(request.cookies, cookie)
+	}
 }
 
 func (r Request) addHeaders(headersMap http.Header) {
