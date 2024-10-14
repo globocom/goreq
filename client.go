@@ -141,8 +141,8 @@ func (client Client) setConnectTimeout(timeout time.Duration) {
 //following policy (such as redirects, cookies, auth) as configured on the client.
 func (client Client) Do(request Request) (*Response, error) {
 
-	if erro := client.check(); erro != nil {
-		return nil, erro
+	if err := client.check(); err != nil {
+		return nil, err
 	}
 
 	req, err := request.NewRequest()
