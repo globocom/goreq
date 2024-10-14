@@ -283,7 +283,11 @@ func (r Request) NewRequest() (*http.Request, error) {
 		return nil, err
 	}
 	// add headers to the request
-	req.Host = r.Host
+	if host := req.Header.Get("Host"); host != "" {
+		req.Host = host
+	} else {
+		req.Host = r.Host	
+	}
 
 	r.addHeaders(req.Header)
 	if r.Compression != nil {
